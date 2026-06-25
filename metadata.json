@@ -1,0 +1,6 @@
+{
+  "name": "Evergrove",
+  "description": "An iOS personal finance app with cashflow tracking, bill reminders, dynamic safe-to-spend calculations, and spending simulation tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
