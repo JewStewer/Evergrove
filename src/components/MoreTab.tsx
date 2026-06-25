@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Shield, Sparkles, RefreshCw, Layers, Sliders, Trash2, ShieldAlert, ArrowLeft, Database, Landmark, Cloud, Link2, Check, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Sparkles, RefreshCw, Layers, Sliders, Trash2, ShieldAlert, ArrowLeft, Database, Landmark, Cloud, Link2, Check, HelpCircle, Github, Award, UploadCloud } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Account, Bill, Transaction } from '../types';
 
 interface MoreTabProps {
   noSpendMode: boolean;
@@ -8,6 +9,17 @@ interface MoreTabProps {
   onClearCache: () => void;
   onSync: () => void;
   isSyncing: boolean;
+  githubToken: string;
+  setGithubToken: (val: string) => void;
+  githubUsername: string;
+  setGithubUsername: (val: string) => void;
+  githubRepo: string;
+  setGithubRepo: (val: string) => void;
+  githubRewardPerCommit: number;
+  setGithubRewardPerCommit: (val: number) => void;
+  accounts: Account[];
+  bills: Bill[];
+  transactions: Transaction[];
 }
 
 export default function MoreTab({
@@ -15,7 +27,18 @@ export default function MoreTab({
   setNoSpendMode,
   onClearCache,
   onSync,
-  isSyncing
+  isSyncing,
+  githubToken,
+  setGithubToken,
+  githubUsername,
+  setGithubUsername,
+  githubRepo,
+  setGithubRepo,
+  githubRewardPerCommit,
+  setGithubRewardPerCommit,
+  accounts,
+  bills,
+  transactions
 }: MoreTabProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [appLocked, setAppLocked] = useState(false);
@@ -31,6 +54,88 @@ export default function MoreTab({
   // Webhook payload simulator state
   const [simulatingWebhook, setSimulatingWebhook] = useState(false);
   const [webhookLog, setWebhookLog] = useState<string | null>(null);
+
+  // GitHub backup states
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupLogs, setBackupLogs] = useState<string | null>(null);
+
+  // Handle GitHub App OAuth Flow Success Message Listeners
+  useEffect(() => {
+    const handleOauthMessage = (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+        return;
+      }
+      
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.provider === 'github') {
+        const { token, username } = event.data;
+        setGithubToken(token);
+        setGithubUsername(username);
+        if (!githubRepo) {
+          setGithubRepo(`${username}/evergrove-ledger-backup`);
+        }
+        setSaveStatus(`✓ Connected GitHub App as ${username}!`);
+        setTimeout(() => setSaveStatus(null), 4000);
+      }
+    };
+    window.addEventListener('message', handleOauthMessage);
+    return () => window.removeEventListener('message', handleOauthMessage);
+  }, [githubRepo, setGithubToken, setGithubUsername, setGithubRepo]);
+
+  const handleConnectGithub = async () => {
+    try {
+      const response = await fetch('/api/github/auth/url');
+      if (!response.ok) throw new Error('Failed to fetch authorization URL');
+      const { url } = await response.json();
+      const authWindow = window.open(url, 'github_oauth_popup', 'width=600,height=750');
+      if (!authWindow) {
+        alert('Popup blocker is active. Please allow popups for this site to link your GitHub account.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to launch GitHub OAuth window.');
+    }
+  };
+
+  const handleBackupLedger = async () => {
+    if (!githubToken) {
+      alert("Please connect GitHub first!");
+      return;
+    }
+    if (!githubRepo) {
+      alert("Please specify a Backup Repository name!");
+      return;
+    }
+
+    setBackingUp(true);
+    setBackupLogs("Initializing GitHub Backup Pipeline...");
+
+    try {
+      const payload = { accounts, bills, transactions };
+      const response = await fetch("/api/github/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: githubToken,
+          username: githubUsername,
+          repo: githubRepo,
+          payload
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setBackupLogs(`✓ Backup completed successfully!\nRepo: ${githubRepo}\nFile: evergrove-ledger.json\nCommit SHA: ${data.commit_sha.substring(0, 10)}`);
+      } else {
+        throw new Error(data.error || "Backup failed.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setBackupLogs(`❌ Error: ${err.message}`);
+    } finally {
+      setBackingUp(false);
+    }
+  };
 
   const handleSmartClean = () => {
     setSmartCleanMessage('Scanning repeated merchants for mixed categories...');
@@ -56,6 +161,17 @@ export default function MoreTab({
     localStorage.removeItem('evergrove_up_token');
     localStorage.removeItem('evergrove_supabase_url');
     localStorage.removeItem('evergrove_supabase_key');
+    
+    // Clear GitHub connection state
+    setGithubToken('');
+    setGithubUsername('');
+    setGithubRepo('');
+    setGithubRewardPerCommit(5.00);
+    localStorage.removeItem('evergrove_github_token');
+    localStorage.removeItem('evergrove_github_username');
+    localStorage.removeItem('evergrove_github_repo');
+    localStorage.removeItem('evergrove_github_reward');
+
     setSaveStatus('🔌 Integrations disconnected.');
     setTimeout(() => {
       setSaveStatus(null);
@@ -391,6 +507,144 @@ export default function MoreTab({
                     Auto-backup to Supabase on manual Syncs
                   </label>
                 </div>
+              </div>
+            </div>
+
+            {/* GitHub App Config Block */}
+            <div className="bg-[#161c2a] rounded-2xl p-4 border border-[#1e2638] shadow-md space-y-3.5">
+              <div className="flex items-center gap-2">
+                <Github className="w-4 h-4 text-[#0db095]" />
+                <h3 className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">
+                  GitHub App OAuth & Sync
+                </h3>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase font-mono block">
+                    GitHub Connection
+                  </span>
+                  
+                  {githubUsername ? (
+                    <div className="bg-[#121722] border border-[#0db095]/20 p-3 rounded-xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] text-slate-400 font-semibold block">Connected Account</span>
+                        <span className="text-xs text-emerald-400 font-bold font-mono">@{githubUsername}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setGithubToken('');
+                          setGithubUsername('');
+                          setGithubRepo('');
+                          setSaveStatus('🔌 GitHub account disconnected.');
+                          setTimeout(() => setSaveStatus(null), 3000);
+                        }}
+                        className="text-[10px] text-rose-400 hover:underline font-bold"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleConnectGithub}
+                      className="w-full py-2.5 bg-[#242f45] hover:bg-[#2c3a54] border border-slate-700/50 text-slate-200 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Github className="w-4 h-4 text-white" />
+                      <span>Connect via GitHub App (OAuth)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="border-t border-[#1e2638]/50 my-2 pt-2 space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase font-mono block">
+                      Fine-Grained Token (Or PAT Fallback)
+                    </label>
+                    <input
+                      type="password"
+                      value={githubToken}
+                      onChange={(e) => {
+                        setGithubToken(e.target.value);
+                        if (!githubUsername) {
+                          setGithubUsername('Developer');
+                        }
+                      }}
+                      placeholder="github_pat_... or oauth_token"
+                      className="w-full bg-[#121722] text-xs px-3 py-2 rounded-xl border border-[#1e2638] text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#0db095]"
+                    />
+                    <p className="text-[9px] text-slate-500 font-medium leading-snug">
+                      Enter a Personal Access Token with `repo` scopes if you want to bypass OAuth.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase font-mono block">
+                      Backup Repository
+                    </label>
+                    <input
+                      type="text"
+                      value={githubRepo}
+                      onChange={(e) => setGithubRepo(e.target.value)}
+                      placeholder="username/evergrove-ledger-backup"
+                      className="w-full bg-[#121722] text-xs px-3 py-2 rounded-xl border border-[#1e2638] text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#0db095]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase font-mono block">
+                        Commit Reward
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-xs text-slate-500 font-bold">$</span>
+                        <input
+                          type="number"
+                          step="0.50"
+                          value={githubRewardPerCommit}
+                          onChange={(e) => setGithubRewardPerCommit(parseFloat(e.target.value) || 0)}
+                          className="w-full bg-[#121722] text-xs pl-6 pr-3 py-2 rounded-xl border border-[#1e2638] text-slate-200 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-end pb-0.5">
+                      <p className="text-[9px] text-slate-500 leading-snug">
+                        Discretionary budget bonus earned for every commit pushed today.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {githubToken && (
+                  <div className="bg-[#121722] border border-emerald-500/10 p-3 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">LEDGER Backup status:</span>
+                      <span className="text-slate-200 font-bold flex items-center gap-1 font-mono text-[10px]">
+                        evergrove-ledger.json
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={handleBackupLedger}
+                      disabled={backingUp}
+                      className="w-full py-1.5 bg-[#0db095]/10 hover:bg-[#0db095]/20 border border-[#0db095]/30 text-[10px] font-bold text-[#0db095] rounded-lg transition-all flex items-center justify-center gap-1 active:scale-95"
+                    >
+                      {backingUp ? (
+                        <span>Pushing Backup...</span>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>Push Real-Time Backup to GitHub</span>
+                        </>
+                      )}
+                    </button>
+
+                    {backupLogs && (
+                      <div className="bg-[#0e121d] border border-slate-800 p-2 rounded-lg text-[9px] font-mono text-slate-300 leading-normal whitespace-pre-wrap text-left">
+                        {backupLogs}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

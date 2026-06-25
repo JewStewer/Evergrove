@@ -41,6 +41,15 @@ export default function App() {
     return saved ? JSON.parse(saved) : false;
   });
 
+  // GitHub Application state integration
+  const [githubToken, setGithubToken] = useState(() => localStorage.getItem('evergrove_github_token') || '');
+  const [githubUsername, setGithubUsername] = useState(() => localStorage.getItem('evergrove_github_username') || '');
+  const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem('evergrove_github_repo') || '');
+  const [githubRewardPerCommit, setGithubRewardPerCommit] = useState<number>(() => {
+    const saved = localStorage.getItem('evergrove_github_reward');
+    return saved ? parseFloat(saved) : 5.00;
+  });
+
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Modals state
@@ -64,6 +73,22 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('evergrove_nospend', JSON.stringify(noSpendMode));
   }, [noSpendMode]);
+
+  useEffect(() => {
+    localStorage.setItem('evergrove_github_token', githubToken);
+  }, [githubToken]);
+
+  useEffect(() => {
+    localStorage.setItem('evergrove_github_username', githubUsername);
+  }, [githubUsername]);
+
+  useEffect(() => {
+    localStorage.setItem('evergrove_github_repo', githubRepo);
+  }, [githubRepo]);
+
+  useEffect(() => {
+    localStorage.setItem('evergrove_github_reward', githubRewardPerCommit.toString());
+  }, [githubRewardPerCommit]);
 
   // Sync simulator
   const handleSync = () => {
@@ -188,6 +213,9 @@ export default function App() {
             onSmartAssistantOpen={() => setIsSmartAssistantOpen(true)}
             onSync={handleSync}
             isSyncing={isSyncing}
+            githubToken={githubToken}
+            githubUsername={githubUsername}
+            githubRewardPerCommit={githubRewardPerCommit}
           />
         )}
 
@@ -232,6 +260,17 @@ export default function App() {
             onClearCache={handleClearCache}
             onSync={handleSync}
             isSyncing={isSyncing}
+            githubToken={githubToken}
+            setGithubToken={setGithubToken}
+            githubUsername={githubUsername}
+            setGithubUsername={setGithubUsername}
+            githubRepo={githubRepo}
+            setGithubRepo={setGithubRepo}
+            githubRewardPerCommit={githubRewardPerCommit}
+            setGithubRewardPerCommit={setGithubRewardPerCommit}
+            accounts={accounts}
+            bills={bills}
+            transactions={transactions}
           />
         )}
       </PhoneContainer>

@@ -16,6 +16,9 @@ interface HomeTabProps {
   onSmartAssistantOpen: () => void;
   onSync: () => void;
   isSyncing: boolean;
+  githubToken?: string;
+  githubUsername?: string;
+  githubRewardPerCommit?: number;
 }
 
 interface AIInsight {
@@ -37,8 +40,35 @@ export default function HomeTab({
   onAddBillOpen,
   onSmartAssistantOpen,
   onSync,
-  isSyncing
+  isSyncing,
+  githubToken,
+  githubUsername,
+  githubRewardPerCommit
 }: HomeTabProps) {
+  const [commitCount, setCommitCount] = useState<number>(0);
+  const [fetchingCommits, setFetchingCommits] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (githubToken && githubUsername) {
+      setFetchingCommits(true);
+      fetch('/api/github/commits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: githubToken, username: githubUsername })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (typeof data.commitCount === 'number') {
+          setCommitCount(data.commitCount);
+        }
+      })
+      .catch(err => console.error("Error fetching commit count:", err))
+      .finally(() => setFetchingCommits(false));
+    }
+  }, [githubToken, githubUsername]);
+
+  const commitBonus = (githubToken && githubUsername) ? commitCount * (githubRewardPerCommit ?? 5.00) : 0;
+
   // Calculations
   const checkingAcc = accounts.find(a => a.type === 'checking');
   const savingsAcc = accounts.find(a => a.type === 'savings');
@@ -219,7 +249,7 @@ export default function HomeTab({
                 <div className="h-7 bg-slate-800 rounded animate-pulse w-24" />
               ) : (
                 <h3 className="text-2xl font-extrabold text-[#0db095] tracking-tight">
-                  ${aiInsight?.safeDailyLimit ? aiInsight.safeDailyLimit.toFixed(2) : dailySpendLimit}
+                  ${(aiInsight?.safeDailyLimit ? aiInsight.safeDailyLimit + commitBonus : parseFloat(dailySpendLimit) + commitBonus).toFixed(2)}
                   <span className="text-xs text-slate-400 font-normal"> / day</span>
                 </h3>
               )}
@@ -238,6 +268,29 @@ export default function HomeTab({
               Add Spend
             </button>
           </div>
+
+          {githubUsername && (
+            <div className="flex items-center justify-between border-t border-[#1e2638]/50 pt-2.5 mt-1.5 text-[11px]">
+              <span className="text-slate-400 flex items-center gap-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>GitHub Productivity Rewards:</span>
+              </span>
+              <span className="font-semibold text-slate-200 flex items-center gap-1">
+                {fetchingCommits ? (
+                  <span className="text-slate-500 font-mono text-[10px]">counting...</span>
+                ) : (
+                  <>
+                    <span className="text-emerald-400 font-mono font-bold">{commitCount} commits today</span>
+                    <span className="text-slate-500">→</span>
+                    <span className="text-[#0db095] font-extrabold">+${commitBonus.toFixed(2)}</span>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
         </motion.div>
 
         {/* AI Smart Insight Card */}
